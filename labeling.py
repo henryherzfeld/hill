@@ -10,48 +10,49 @@ output_folder = 'labeled'
 _, _, filenames = next(os.walk(raw_frames_path))
 
 n_pitch_frames = 15
-post_save_buffer = 10
+post_save_buffer = 100
 save_buffer_count = post_save_buffer
 saved = False
 label = True
+draw = False
+view = False
 
 if label:
-    output_path = os.join(os.getcwd(), output_folder)
+    output_path = os.path.join(os.getcwd(), output_folder)
 
     if not os.path.isdir(output_path):
         os.mkdir(output_folder)
+
 
 def save_pitch_frames(label, seq_end_idx):
 
     frames = filenames[seq_end_idx - n_pitch_frames:seq_end_idx]
 
-    save_path = os.join.path(output_path, label)
+    save_path = os.path.join(output_path, label)
 
-    os.mkdirs(save_path)
+    os.makedirs(save_path)
 
     for frame in frames:
         source_path = os.path.join(raw_frames_path, frame)
         destination_path = os.path.join(save_path, frame)
 
-        shutil.copyfile(source_path, save_path)
+        dest = shutil.copy2(source_path, save_path)
 
-        return True
+        print("saved to ", dest)
 
-draw = True
-view = True
+    return True
+
 
 uncertain_frames = 0
-uncertain_frame_threshold = 3
+uncertain_frame_threshold = 25
 
-threshold = .99
+threshold = .90
 strike_pattern_frame_label = 144
 ball_pattern_frame_label = 724
 box_pattern_frame_label = 144
 r2_pattern_frame_label = 9
-
 cropx = 500
 cropy = 100
-w, h = img.shape[0:2] # assumes every frame is the same size
 
 ball_count = 1
 strike_count = 1
@@ -62,16 +63,20 @@ box_pattern = box_pattern_frame[332:338, 770:1145]
 box_h, box_w = box_pattern.shape[0:2]
 
 strike_pattern_frame = cv2.imread(os.path.join(raw_frames_path, filenames[strike_pattern_frame_label]))
-strike_pattern = strike_pattern_frame[553:592, 1030:1073]
+strike_pattern = strike_pattern_frame[553:565, 1030:1073]
 strike_h, strike_w = strike_pattern.shape[0:2]
 
 ball_pattern_frame = cv2.imread(os.path.join(raw_frames_path, filenames[ball_pattern_frame_label]))
-ball_pattern = ball_pattern_frame[450:495, 1220:1262]
+ball_pattern = ball_pattern_frame[450:465, 1222:1257]
 ball_h, ball_w = ball_pattern.shape[0:2]
 
 r2_pattern_frame = cv2.imread(os.path.join(raw_frames_path, filenames[r2_pattern_frame_label]))
-r2_pattern = r2_pattern_frame[610:630, 1220:1245]
+r2_pattern = r2_pattern_frame[610:630, 1280:1340]
 r2_h, r2_w = r2_pattern.shape[0:2]
+
+# xx = 900
+# 
+# filenames = filenames[xx:]
 
 # viewing the templates
 if view:
@@ -95,6 +100,7 @@ for i, file in enumerate(filenames):
         img = cv2.imread(frame_path)
 
         # cropping image
+        w, h = img.shape[0:2]
         img = img[50+cropy:w-50, 0+cropx:h-cropx]
 
         print(frame_path)
@@ -103,7 +109,8 @@ for i, file in enumerate(filenames):
         box_res = cv2.matchTemplate(img, box_pattern, cv2.TM_CCOEFF_NORMED)
         box_loc = np.where(box_res >= threshold)
 
-        if box_loc:
+        if np.any(box_loc):
+            print("box")
             if draw:
                 for pt in zip(*box_loc[::-1]):
                     cv2.rectangle(img, pt, (pt[0] + box_w, pt[1] + box_h), (0, 0, 255), 2)
@@ -112,36 +119,34 @@ for i, file in enumerate(filenames):
             r2_res = cv2.matchTemplate(img, r2_pattern, cv2.TM_CCOEFF_NORMED)
             r2_loc = np.where(r2_res >= threshold)
 
-            if not r2_loc:
+            if not np.any(r2_loc):
                 # template matching for strike pattern
                 strike_res = cv2.matchTemplate(img, strike_pattern, cv2.TM_CCOEFF_NORMED)
                 strike_loc = np.where(strike_res >= threshold)
 
-                if not strike_loc:
+                if not np.any(strike_loc):
+                    print("no strike pattern")
                     # template matching for ball pattern
                     ball_res = cv2.matchTemplate(img, ball_pattern, cv2.TM_CCOEFF_NORMED)
                     ball_loc = np.where(ball_res >= threshold)
 
-                    if not ball_loc:
+                    if not np.any(ball_loc):
                         uncertain_frames += 1
 
                         if uncertain_frames >= uncertain_frame_threshold:
-                            name = "ball"
-                            saved = save_pitch_frames(name + ball_count, i - uncertain_frames)
+                            saved = save_pitch_frames("ball" + str(ball_count), i - uncertain_frames - 1)
                             ball_count += 1
                             uncertain_frames = 0
 
                     else:
-                        name = "ball"
-                        saved = save_pitch_frames(name + ball_count, i - uncertain_frames)
+                        saved = save_pitch_frames("ball" + str(ball_count), i-1)
                         ball_count += 1
                         uncertain_frames = 0
 
                 else:
-                    name = "strike"
-                    saved = save_pitch_frames(name + strike_count, i - uncertain_frames)
+                    saved = save_pitch_frames("strike" + str(strike_count), i-1)
+                    strike_count += 1
                     uncertain_frames = 0
-
 
                 if draw:
                     for pt in zip(*strike_loc[::-1]):
